@@ -77,16 +77,10 @@ def start_training():
 
 def sample_trajectory(waypoints):
 
-    condition_poses = []
-    for pose in condition_poses:
-        condition_poses.append(pose.position)
-        
-    T = np.linspace(0,1,len(condition_poses)) # generate time steps
-
     trajectory = ""
 
-    start = np.array([condition_poses[0].x,condition_poses[0].y,condition_poses[0].z])
-    end = np.array([condition_poses[-1].x,condition_poses[-1].y,condition_poses[-1].z])
+    start = waypoints[0]
+    end = waypoints[-1]
 
     _g = g
     _g = _g.condition([0,-1], [start, end])
@@ -112,7 +106,8 @@ def sample_trajectory(waypoints):
 
 if __name__ == "__main__":
     start_training()
-    ### define condition poses with PoseMsg[]
+    
+    ### store waypoints with np arrays (num_of_waypoints, 3)
     
     ### then, sample with
     # sample_trajectory(waypoints)
