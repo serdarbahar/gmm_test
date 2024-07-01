@@ -63,13 +63,11 @@ def start_training():
     number_of_demonstrations = len(trajectories)
     all_demonstrations = []
     for trajectory in trajectories:
-        interpolated_points = interpolate_points(trajectory,sample_length)
-        #interpolated_points_reshaped = interpolated_points.reshape(-1, 3)
-        #rospy.loginfo(interpolated_points)
-        all_demonstrations.append(interpolated_points)
+        interpolated_points = interpolate_points(trajectory,sample_length) 
+        all_demonstrations.append(interpolated_points) 
     #rospy.loginfo(all_demonstrations)
     demo_data = np.array(all_demonstrations)
-    demo_data = demo_data.reshape((number_of_demonstrations, sample_length, n_dims))
+    demo_data = demo_data.reshape((number_of_demonstrations, sample_length, n_dims)) 
     
     Y = demo_data
         
