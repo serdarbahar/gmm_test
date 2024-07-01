@@ -70,7 +70,9 @@ def start_training():
     demo_data = demo_data.reshape((number_of_demonstrations, sample_length, n_dims)) 
     
     Y = demo_data.reshape(number_of_demonstrations, -1)
-        
+
+    print(Y.shape)
+    
     g.from_samples(Y)
 
 def sample_trajectory(waypoints):
