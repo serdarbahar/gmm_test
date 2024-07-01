@@ -90,16 +90,20 @@ def sample_trajectory(waypoints):
     sample = []
     sample = trajectory
 
+    '''
     response_trajectory = []
     for point in sample: 
         pose = Pose()
         pose.position.x, pose.position.y, pose.position.z = point[0], point[1], point[2]
         response_trajectory.append(pose)
+    '''
 
+    # writes the sample trajectory to a file
     file_path = os.path.join(os.path.dirname(__file__), 'sample.txt')
     with open(file_path, 'w+') as file:
         for point in sample:
             file.write(str(point) + '\n')
+
     
 
 if __name__ == "__main__":
