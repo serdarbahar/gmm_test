@@ -63,16 +63,19 @@ def start_training():
     number_of_demonstrations = len(trajectories)
     all_demonstrations = []
     for trajectory in trajectories:
-        interpolated_points = interpolate_points(trajectory,sample_length) 
-        all_demonstrations.append(interpolated_points) 
+        interpolated_points = interpolate_points(trajectory,sample_length)
+        #interpolated_points_reshaped = interpolated_points.reshape(-1, 3)
+        #rospy.loginfo(interpolated_points)
+        all_demonstrations.append(interpolated_points)
     #rospy.loginfo(all_demonstrations)
     demo_data = np.array(all_demonstrations)
-    demo_data = demo_data.reshape((number_of_demonstrations, sample_length, n_dims)) 
-    
-    Y = demo_data.reshape(number_of_demonstrations, -1)
 
-    print(Y.shape)
-    
+    demo_data = demo_data.reshape((number_of_demonstrations, sample_length, n_dims))
+
+    Y = demo_data
+
+    print(f"Y.shape: {Y.shape}")
+        
     g.from_samples(Y)
 
 def sample_trajectory(waypoints):
@@ -83,40 +86,39 @@ def sample_trajectory(waypoints):
     end = waypoints[-1]
 
     _g = g
-    _g = _g.condition([0,1,2],start)
-    _g = _g.condition([-2,-1,0],end)
+    _g = _g.condition([0,1,2], start)
+    _g = _g.condition([-2,-1,0], end)
     trajectory = _g.sample(1)
     trajectory = np.insert(trajectory, 0, start)
     trajectory = np.append(trajectory, end)
 
-    trajectory = trajectory.reshape(sample_length, n_dims)
-  
+    trajectory = trajectory.reshape(sample_length,-1)
+
+
+    
     sample = []
     sample = trajectory
 
-    '''
     response_trajectory = []
     for point in sample: 
         pose = Pose()
         pose.position.x, pose.position.y, pose.position.z = point[0], point[1], point[2]
         response_trajectory.append(pose)
-    '''
 
-    # writes the sample trajectory to a file
     file_path = os.path.join(os.path.dirname(__file__), 'sample.txt')
     with open(file_path, 'w+') as file:
         for point in sample:
             file.write(str(point) + '\n')
-
     
 
 if __name__ == "__main__":
     start_training()
     
-    ### store waypoints with np arrays (num_of_waypoints, 3)
-    
-    ### then, sample with
-    # sample_trajectory(waypoints)
+    waypoints = []
+    waypoints.append(np.array([1,1,1]))
+    waypoints.append(np.array([1,1,1]))
+
+    sample_trajectory(waypoints)
 
 
 
