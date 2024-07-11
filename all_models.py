@@ -18,7 +18,6 @@ sample_length = 100
 n_dims_pos = 3
 n_dims_or = 4
 
-## fill this!!
 filenames = []
 
 priors = 20 # number of GMM components
@@ -309,8 +308,6 @@ if __name__ == "__main__":
         if file.endswith('.npy') & file.startswith('data'):
             filenames.append(file)
 
-
-    
     start_training("promp")
     # waypoints = [[posx, posy, posz, orx, ory, orz, orw], ...] (2D array)
     waypoints = [[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]]
