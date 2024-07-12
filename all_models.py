@@ -18,6 +18,7 @@ sample_length = 100
 n_dims_pos = 3
 n_dims_or = 4
 
+## fill this!!
 filenames = []
 
 priors = 20 # number of GMM components
@@ -69,8 +70,21 @@ def read_data_files():
     trajectory_list= []
     for filename in filenames:
         trajectory = np.load(filename)
+        trajectory = make_quaternions_continuous(trajectory)
         trajectory_list.append(trajectory)
     return trajectory_list
+
+def make_quaternions_continuous(trajectory):
+    for i in range(1, len(trajectory)):
+        prev_q = trajectory[i-1][3:7]
+        curr_q = trajectory[i][3:7]
+
+        dot_product = np.dot(prev_q, curr_q)
+
+        if dot_product < 0:
+            trajectory[i][3:7] = -1 * curr_q
+    
+    return trajectory
 
 def interpolate_points(points, total_points):
     num_segments = len(points) - 1
@@ -217,7 +231,6 @@ def sample_trajectory(poses):
 
         for i in range(len(condition_orientations)):
             orientation = condition_orientations[i]
-
             p_or.condition_position([orientation[0], orientation[1], orientation[2], orientation[3]],t=T[i])
 
         #sampling
@@ -280,23 +293,51 @@ def sample_trajectory(poses):
         sample = np.concatenate((trajectory_pos,trajectory_or), axis=-1)
 
     # only plots orientations at the moment
-    plot(_demo_data, sample)
+    plot(_demo_data, sample, poses)
 
     ### SAMPLE COMPLETED
 
 
 
-def plot(demo_data, sample):
+def plot(demo_data, sample, waypoints):
     # (100,4)
 
     T = np.linspace(0,100,100)
-    for i in range(4):
+    
+    for j in range(4):
         plt.figure()
-        plt.scatter(T, sample[:,i], c="blue")
-        for data in demo_data:
-            plt.scatter(T, data[:,i])
-        plt.title(f'{i} vs. time')
+        plt.grid(alpha=0.2)
+        plt.xlabel('Timestamp', fontsize=14)
+
+        lbl = 'x' if j==0 else ('y' if j==1 else ('z' if j==2 else 'w'))
+
+        plt.ylabel(f'Quaternion {lbl}', fontsize=14)
+
+        
+        
+        plt.plot(T, sample[:,3+j], linewidth=3, label="generated", c="blue", alpha=1)
+        for i in range (len(demo_data)):
+            data = demo_data[i]
+            if (i == 0):
+                plt.plot(T, data[:,j], label="data", c="black", alpha=0.3)
+            else:
+                plt.plot(T, data[:,j], c="black", alpha=0.3)
+        for i in range(len(waypoints)):
+            waypoint = waypoints[i]
+            if (i == 0):
+                plt.scatter(i*len(T)/(len(waypoints)-1), waypoint[3+j], label="condition points", c="green")
+            else:
+                plt.scatter(i*len(T)/(len(waypoints)-1), waypoint[3+j], c="green")
+        
+        plt.title(f'Quaternion {lbl} vs. time', fontsize=16)
+        plt.ylim(-1,1)
+        plt.legend(loc = 'lower left')
+        if (j==1):
+            plt.legend(loc = 'center left')
         plt.show()
+
+
+
 
 
 if __name__ == "__main__":
@@ -308,9 +349,11 @@ if __name__ == "__main__":
         if file.endswith('.npy') & file.startswith('data'):
             filenames.append(file)
 
-    start_training("promp")
+
+    
+    start_training("gmm")
     # waypoints = [[posx, posy, posz, orx, ory, orz, orw], ...] (2D array)
-    waypoints = [[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]]
+    waypoints = [[0,0,0,-0.25,-0.9,-0.25,0.25],[0,0,0,-0.25,-0.9,0,0.12]]
     sample_trajectory(waypoints)
 
 
