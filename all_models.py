@@ -17,6 +17,7 @@ last_training = ""
 sample_length = 100
 n_dims_pos = 3
 n_dims_or = 4
+gmm_context = []
 
 ## fill this!!
 filenames = []
@@ -129,16 +130,28 @@ def interpolate_quaternions(quaternions, total_points):
     return interpolated_points
 
 def start_training(input):
-    
+        
     global last_training
     global _demo_data
-    
+
     trajectories = read_data_files()
+    
+    context = []
+    for traj in trajectories:
+        context.append(traj[0][7])
+    context = np.array(context)
+    print(context)
+
+    trajectories = [[pose[0:7] for pose in traj] for traj in trajectories]
+    print(trajectories)
+
     number_of_demonstrations = len(trajectories)
     all_demonstrations = []
     for trajectory in trajectories:
-        interpolated_points = interpolate_points(trajectory[:,:3],sample_length)
-        interpolated_quaternions = interpolate_quaternions(trajectory[:,-4:], sample_length)
+        pos_trajectory = [pose[0:3] for pose in trajectory]
+        or_trajectory = [pose[3:7] for pose in trajectory]
+        interpolated_points = interpolate_points(pos_trajectory,sample_length)
+        interpolated_quaternions = interpolate_quaternions(or_trajectory, sample_length)
 
         interpolated_data = np.concatenate((interpolated_points, interpolated_quaternions), axis = -1)
 
@@ -150,10 +163,12 @@ def start_training(input):
     demo_data_pos = demo_data[:,:,:3]
     demo_data_or = demo_data[:,:,-4:]
 
-    _demo_data = demo_data_or
+    _demo_data = demo_data
 
-    
-    if ( input == "promp"):
+    global num_demo
+    num_demo = number_of_demonstrations
+
+    if (input == "promp"):
         Ts = np.linspace(0, 1, sample_length).reshape((1, sample_length))  # Generate Ts for one demonstration
         Ts = np.tile(Ts, (number_of_demonstrations, 1))
         #Ts = np.linspace(0,1,sample_length).reshape((number_of_demonstrations,sample_length)) 
@@ -165,22 +180,6 @@ def start_training(input):
         p_or.imitate(Ts,Yor)
 
         last_training = "promp"
-
-    elif (input == "dmp"):
-
-        Ypos = demo_data_pos
-        Yor = demo_data_or
-        Ts = np.linspace(0,1,sample_length).reshape(sample_length)
-
-        # Training
-        for i, traj in enumerate(Ypos):
-            d_pos.imitate(T=Ts, Y = traj)
-        
-        for i, traj in enumerate(Yor):
-            d_or.imitate(T=Ts, Y = traj)
-
-        last_training = "dmp"
-    
     
     elif (input == "gmm"):
 
@@ -204,9 +203,44 @@ def start_training(input):
 
         last_training = "gmm" 
 
+    elif (input == "contextual_promp"):
+
+        timesteps = np.linspace(0, 1, sample_length)
+        timesteps = np.tile(timesteps, (number_of_demonstrations, 1))
+        weights_pos = np.empty((number_of_demonstrations, n_dims_pos * priors))
+        weights_or = np.empty((number_of_demonstrations, n_dims_or * priors))
+
+        p_pos.imitate(timesteps, demo_data_pos)
+        p_or.imitate(timesteps, demo_data_or)
+
+        for demo_idx in range(number_of_demonstrations):
+            weights_pos[demo_idx] = p_pos.weights(timesteps[demo_idx], demo_data_pos[demo_idx]).flatten()
+            weights_or[demo_idx] = p_or.weights(timesteps[demo_idx], demo_data_or[demo_idx]).flatten()
+            
+        weights = np.concatenate((weights_pos, weights_or), axis=-1)
+
+        context_features = context.reshape(-1, 1)   # Reshape to column vector so it can be concatenated
+        X = np.hstack((context_features, weights))
+
+        global gmm_context
+        gmm_context = GMM(n_components=3, random_state=0)
+        gmm_context.from_samples(X)
+
+        last_training = "contextual_promp"
+    
     isTraining = False
 
-def sample_trajectory(poses):
+def get_promp_from_context(gmm_, context_feature):
+    pmp = ProMP(n_dims=n_dims_or + n_dims_pos, n_weights_per_dim=priors)
+    context_feature = np.array([context_feature]).reshape(1, -1)
+
+    conditional_weight_distribution = gmm_.condition(np.arange(context_feature.shape[1]), context_feature).to_mvn()
+    conditional_mean = conditional_weight_distribution.mean[-(n_dims_or + n_dims_pos) * priors:]
+    conditional_covariance = conditional_weight_distribution.covariance[-(n_dims_or + n_dims_pos) * priors:, -(n_dims_or + n_dims_pos) * priors:]
+    pmp.from_weight_distribution(conditional_mean, conditional_covariance)
+    return pmp
+    
+def sample_trajectory(poses, novel_context = 0):
 
     global last_training
     condition_poses = []
@@ -235,23 +269,6 @@ def sample_trajectory(poses):
 
         #sampling
         trajectory_or = p_or.sample_trajectories(T=np.linspace(0,1,sample_length).reshape(sample_length), n_samples=1, random_state=np.random.RandomState(seed=1234))
-
-    elif (last_training == "dmp"):
-
-        for i in range(0, len(condition_poses)):
-            pose = condition_poses[i]
-            d_pos.configure(t = T[i], goal_y = np.array([pose[0], pose[1], pose[2]]))
-
-        t, trajectory_pos = d_pos.open_loop()
-        trajectory_pos = trajectory_pos[:sample_length]
-
-        for i in range(0, len(condition_orientations)):
-            orientation = condition_orientations[i]
-            d_or.configure(t = T[i], goal_y = np.array([orientation[0], orientation[1], orientation[2], orientation[3]]))
-
-        t, trajectory_or = d_or.open_loop()
-        trajectory_or = trajectory_or[:sample_length]
-    
     elif (last_training == "gmm"):
         
         for i in range(len(condition_poses)):
@@ -285,12 +302,26 @@ def sample_trajectory(poses):
 
         trajectory_pos = np.column_stack((trajectory_pos_x[0], trajectory_pos_y[0], trajectory_pos_z[0]))
         trajectory_or = np.column_stack((trajectory_or_x[0], trajectory_or_y[0], trajectory_or_z[0], trajectory_or_w[0]))
+
+    elif (last_training == "contextual_promp"):
+        
+        timesteps = np.linspace(0, 1, sample_length)
+        timesteps = np.tile(timesteps, (num_demo, 1))
+
+        new_context_feature = novel_context # Novel context
+        pmp = get_promp_from_context(gmm_context, new_context_feature)
+
+        # Generate trajectory based on the adapted ProMP
+        mean_trajectory = pmp.mean_trajectory(timesteps[0])
+        trajectory_pos = mean_trajectory
     
     sample = []
     if (last_training == "promp"):
         sample = np.concatenate((trajectory_pos[0],trajectory_or[0]), axis=-1)
-    else:
+    elif last_training == "gmm":
         sample = np.concatenate((trajectory_pos,trajectory_or), axis=-1)
+    else:
+        sample = trajectory_pos
 
     # only plots orientations at the moment
     plot(_demo_data, sample, poses)
@@ -315,7 +346,7 @@ def plot(demo_data, sample, waypoints):
 
         
         
-        plt.plot(T, sample[:,3+j], linewidth=3, label="generated", c="blue", alpha=1)
+        plt.plot(T, sample[:,j], linewidth=3, label="generated", c="blue", alpha=1)
         for i in range (len(demo_data)):
             data = demo_data[i]
             if (i == 0):
@@ -325,9 +356,9 @@ def plot(demo_data, sample, waypoints):
         for i in range(len(waypoints)):
             waypoint = waypoints[i]
             if (i == 0):
-                plt.scatter(i*len(T)/(len(waypoints)-1), waypoint[3+j], label="condition points", c="green")
+                plt.scatter(i*len(T)/(len(waypoints)-1), waypoint[j], label="condition points", c="green")
             else:
-                plt.scatter(i*len(T)/(len(waypoints)-1), waypoint[3+j], c="green")
+                plt.scatter(i*len(T)/(len(waypoints)-1), waypoint[j], c="green")
         
         plt.title(f'Quaternion {lbl} vs. time', fontsize=16)
         plt.ylim(-1,1)
@@ -338,10 +369,10 @@ def plot(demo_data, sample, waypoints):
 
 
 
-
-
 if __name__ == "__main__":
 
+    ## context is in the .npy files (8th dimension). the script handles it. TODO: add waypoints
+    
     ### EDIT THESE
     os.chdir('/home/user/.ros')
     prev_files = os.listdir('/home/user/.ros')
@@ -351,10 +382,10 @@ if __name__ == "__main__":
 
 
     
-    start_training("gmm")
+    start_training("contextual_promp")
     # waypoints = [[posx, posy, posz, orx, ory, orz, orw], ...] (2D array)
     waypoints = [[0,0,0,-0.25,-0.9,-0.25,0.25],[0,0,0,-0.25,-0.9,0,0.12]]
-    sample_trajectory(waypoints)
+    sample_trajectory(waypoints, 0.15)
 
 
 
