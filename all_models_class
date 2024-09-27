@@ -122,6 +122,10 @@ class T:
         global last_training
         global _demo_data
 
+
+        ## fix here
+        context = []
+
         number_of_demonstrations = len(trajectories)
         all_demonstrations = []
         for trajectory in trajectories:
@@ -178,6 +182,34 @@ class T:
             g_or_w.from_samples(Yor_w)
 
             last_training = "gmm"
+
+        elif (input == "contextual_promp"):
+            timesteps = np.linspace(0, 1, sample_length)
+            timesteps = np.tile(timesteps, (number_of_demonstrations, 1))
+            weights_pos = np.empty((number_of_demonstrations, n_dims_pos * priors))
+            weights_or = np.empty((number_of_demonstrations, n_dims_or * priors))
+    
+            p_pos.imitate(timesteps, demo_data_pos)
+            p_or.imitate(timesteps, demo_data_or)
+    
+            for demo_idx in range(number_of_demonstrations):
+                weights_pos[demo_idx] = p_pos.weights(timesteps[demo_idx], demo_data_pos[demo_idx]).flatten()
+                weights_or[demo_idx] = p_or.weights(timesteps[demo_idx], demo_data_or[demo_idx]).flatten()
+    
+            # weights = np.concatenate((weights_pos, weights_or), axis=-1)
+    
+            context_features = context.reshape(-1, 1)  # Reshape to column vector so it can be concatenated
+            X_pos = np.hstack((context_features, weights_pos))
+            X_or = np.hstack((context_features, weights_or))
+    
+            global gmm_context_pos
+            global gmm_context_or
+            gmm_context_pos = GMM(n_components=3, random_state=0)
+            gmm_context_or = GMM(n_components=3, random_state=0)
+            gmm_context_pos.from_samples(X_pos)
+            gmm_context_or.from_samples(X_or)
+    
+            last_training = "contextual_promp"
 
         isTraining = False
 
